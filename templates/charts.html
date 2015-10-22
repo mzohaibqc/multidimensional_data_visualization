@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Visualizing Mulidimentional Data</title>
+    <link rel="stylesheet" type="text/css" href="static/css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="static/css/font-awesome.min.css">
+    <link rel="stylesheet" type="text/css" href="static/css/d3.slider.css">
+    <style>
+        .chart rect {
+            fill: steelblue;
+        }
+
+        .chart rect:hover {
+            fill: turquoise;
+        }
+
+        .chart .rectM {
+            stroke: green;
+            stroke-width: 1;
+            fill: green;
+            fill-opacity: .2;
+        }
+
+        .chart .rectM:hover {
+            fill: green;
+            fill-opacity: .5;
+        }
+
+        .chart text {
+            font: 10px sans-serif;
+        }
+
+        .chart .title {
+            font: 15px sans-serif;
+        }
+
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: #000;
+            shape-rendering: crispEdges;
+        }
+
+        .x .tick > text {
+            transform: translate(13px, 35px) rotate(90deg);
+
+        }
+
+        .d3-slider-axis {
+            transform: translate(-15px, 0px);
+        }
+
+        .d3-slider-axis .tick text {
+            transform: translate(-25px, 15px) rotate(-45deg);
+        }
+
+        #handle-one {
+            border-radius: 100%;
+            background: #d62728;
+            -webkit-transition: all 900ms ease;
+            transition: all 900ms ease;
+        }
+
+        circle {
+            stroke: 1px #000000;
+            -webkit-transition: all 600ms ease;
+            transition: all 600ms ease;
+        }
+    </style>
+</head>
+<body>
+
+<script type="text/javascript" src="static/js/d3.v3.min.js"></script>
+<script type="text/javascript" src="static/js/d3.csv.js"></script>
+<script type="text/javascript" src="static/js/topojson.js"></script>
+<script type="text/javascript" src="static/js/datamaps.world.min.js"></script>
+<script type="text/javascript" src="static/js/jquery-latest.js"></script>
+<script type="text/javascript" src="static/js/moment.js"></script>
+<script type="text/javascript" src="static/js/d3.slider.js"></script>
+<script type="text/javascript" src="static/js/d3.legend.js"></script>
+<script type="text/javascript" src="static/js/plotly.min.js"></script>
+<script type="text/javascript" src="static/js/save.to.png.js"></script>
+<script type="text/javascript" src="static/js/bubble_chart.js"></script>
+<script type="text/javascript" src="static/js/plotly_charts.js"></script>
+{#<script type="text/javascript" src="static/js/transactions.js"></script>#}
+<div class="col-lg-3">
+    <table id="data" class="table table-bordered">
+        <caption class="text-left">Population Data for 1980, 1990, 200</caption>
+        <tr>
+            <th>Cities</th>
+            <th>Pop 1980</th>
+            <th>Pop 1990</th>
+            <th>Pop 2000</th>
+        </tr>
+    </table>
+    <table id="4d" class="table table-bordered">
+        <caption class="text-left">Transaction Data</caption>
+        <tr>
+            <th>Date</th>
+            <th>Transaction Type</th>
+            <th>Latitude</th>
+            <th>Longitude</th>
+        </tr>
+    </table>
+</div>
+<div id="charts" class="col-lg-9">
+    <div id='groupchart' class=""></div>
+    <div id='bubble_chart' class=""></div>
+    <div id='line_chart' class=""></div>
+    <div id='transactions' class=""></div>
+    <div id="slider" class="col-lg-10 col-lg-offset-1">
+    <span id='play_icon' class="fa fa-2x fa-play"
+
+          style="position:relative; left: -60px;top: -10px; color:rgb(255, 144, 48);"></span>
+    </div>
+    <div id="bubble_chart" class="chart bottom"></div>
+    <div id="bubbles" class="" style="width: 1200px; height: 500px;"></div>
+</div>
+
+
+<script type="text/javascript">
+    var interval_id;
+    var play = false;
+    var day = 0;
+    d3.csv("static/data/SalesJan2009.csv", function (data) {
+        {#                transactions(data, 'transactions');#}
+        var table = $('#4d');
+        data.forEach(function (d, i) {
+            table.append("<tr><td>" + d['Transaction_date'] + "</td><td>" + d['Payment_Type'] + "</td><td>" + d['Latitude'] + "</td><td>" + d['Longitude'] + "</td></tr>")
+        });
+        transaction_chart(data, '#transactions');
+        map(data);
+
+        var slider = d3.slider().scale(d3.time.scale()
+                .domain([new Date(2009, 0, 1), new Date(2009, 1, 1)]))
+                .axis(d3.svg.axis().ticks(31)).snap(true).value(new Date(2009, 0, 1));
+        {#        var slider = d3.slider().axis( d3.svg.axis() ).snap(true)domain([new Date(2015, 0, 1),( Date(2015, 1, 1)]).value(new Date(2015, 0, 21));#}
+        d3.select('#slider')
+                .call(slider);
+        slider.value(new Date(2009, 0, 1));
+        $('.datamaps-bubble').animate({'opacity': 0}, 300);
+        $('.2009-01-01').animate({'opacity': 0.8}, 300);
+        var bubbles = getMapBubbles('.datamaps-bubble', '2009-01-01');
+        $(bubbles).animate({'opacity': 0.8}, 300);
+        $('#play_icon').click(function (e) {
+            if (play === true) {
+
+                $(e.target).removeClass('fa-pause');
+                $(e.target).addClass('fa-play');
+                window.clearInterval(interval_id);
+            }
+            else {
+                $(e.target).removeClass('fa-play');
+                $(e.target).addClass('fa-pause');
+                interval_id = setInterval(function () {
+                    var translate = +$($('.d3-slider-axis .tick')[day]).attr('transform').split(',')[0].split('(')[1];
+                    $('#handle-one').animate({left: translate}, 1000);
+                    $('#transactions svg circle').animate({'opacity': 0}, 300);
+                    $('.datamaps-bubble').animate({'opacity': 0}, 300);
+                    var bubbles_class = moment(new Date(2009, 0, day)).format('YYYY-MM-DD');
+                    $('.' + bubbles_class).animate({'opacity': 0.7}, 900);
+                    var bubbles = getMapBubbles('.datamaps-bubble', bubbles_class);
+                    $(bubbles).animate({'opacity': 0.8}, 900);
+                    day++;
+                    day %= 30;
+                }, 3000)
+            }
+            play = !play;
+
+
+        });
+    });
+
+    function transactions(dataset, divid) {
+
+        var color = d3.scale.category10().domain(dataset.map(function (d, i) {
+                    return d['Payment_Type'];
+                })),
+                data = [{
+                    x: dataset.map(function (d, i) {
+                        return +d.Latitude;
+                    }),
+                    y: dataset.map(function (d, i) {
+                        return +d.Longitude;
+                    }),
+                    mode: 'markers',
+                    height: 600,
+                    marker: {
+                        size: function () {
+                            return 10;
+                        },
+                        class: function () {
+                            return '2009-01-01';
+                        }
+                    }
+                }];
+
+        Plotly.plot(divid, data);
+    }
+
+    d3.csv("static/data/cities.csv", function (data) {
+        var dataset = {
+            cities: [],
+            pop1980: [],
+            pop1990: [],
+            pop2000: []
+        };
+        var bubble_dataset = [];
+
+        dataset.pop1980 = data.map(function (d) {
+            return +d["Pop 1980"];
+        });
+        dataset.pop1990 = data.map(function (d) {
+            return +d["Pop 1990"];
+        });
+        dataset.pop2000 = data.map(function (d) {
+            return +d["Pop 2000"];
+        });
+        dataset.cities = data.map(function (d, i) {
+            bubble_dataset.push({
+                name: d["City"],
+                x: i,
+                y: 1980,
+                size: dataset.pop1980[i],
+                c: dataset.pop1980[i]
+            });
+            bubble_dataset.push({
+                name: d["City"],
+                x: i,
+                y: 1990,
+                size: dataset.pop1990[i],
+                c: dataset.pop1990[i]
+            });
+            bubble_dataset.push({
+                name: d["City"],
+                x: i,
+                y: 2000,
+                size: dataset.pop2000[i],
+                c: dataset.pop2000[i]
+            });
+            return d["City"];
+        });
+
+
+        var table = $('#data');
+        dataset.cities.forEach(function (d, i) {
+            table.append("<tr><td>" + d + "</td><td>" + dataset.pop1980[i] + "</td><td>" + dataset.pop1990[i] + "</td><td>" + dataset.pop2000[i] + "</td></tr>")
+        });
+        groupchart(dataset, 'groupchart');
+        bubble_chart(bubble_dataset, dataset.cities);
+        multi_line_chart(dataset, 'line_chart');
+
+
+    });
+
+    function transaction_chart(data, divid) {
+        var height = 300;
+        var width = 1200;
+        var margin = 40;
+
+
+        var labelX = 'X';
+        var labelY = 'Y';
+        var svg = d3.select(divid)
+                .append('svg')
+                .attr('class', 'chart')
+                .attr("width", width + margin + margin)
+                .attr("height", height + margin + 2 * margin)
+                .append("g")
+                .attr("transform", "translate(" + margin + "," + margin + ")");
+
+        var x_values = data.map(function (d, i) {
+            return +d.Longitude;
+        });
+
+        var y_values = data.map(function (d, i) {
+            return +d.Latitude;
+        });
+
+        var Payment_Types = $.unique(data.map(function (d, i) {
+            return d['Payment_Type'];
+        }));
+        // maybe a bug in jQuery unique, it's not giving unique items first time so I need to run it again
+        Payment_Types = $.unique(Payment_Types);
+        var projection = d3.geo.mercator();
+        /** Set the projection parameters*/
+        projection
+                .scale(150)
+                .center([30, 40])
+                .translate([width / 2, height / 2]);
+        var x = d3.scale.linear()
+                .domain([d3.min(x_values), d3.max(x_values)])
+                .range([projection([d3.min(x_values), 0])[0], projection([d3.max(x_values), 0])[0]]);
+
+        var y = d3.scale.linear()
+                .domain([d3.min(y_values), d3.max(y_values)])
+                .range([projection([0, d3.min(y_values)])[1], projection([0, d3.max(y_values)])[1]]);
+
+        var color = d3.scale.ordinal()
+                .domain(Payment_Types)
+                .range(["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]);
+
+        var xAxis = d3.svg.axis().scale(x);
+        var yAxis = d3.svg.axis().scale(y).orient("left");
+
+        svg.append("g")
+                .attr("class", "y axis")
+                .call(yAxis)
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("x", 20)
+                .attr("y", -margin)
+                .attr("dy", ".71em")
+                .style("text-anchor", "end")
+                .text(labelY);
+        // x axis and label
+        svg.append("g")
+                .attr("class", "x axis")
+                .attr("transform", "translate(0," + height + ")")
+                .call(xAxis)
+                .append("text")
+                .attr("x", width + 20)
+                .attr("y", margin - 10)
+                .attr("dy", ".71em")
+                .style("text-anchor", "end")
+                .text(labelX);
+
+        svg.selectAll("circle")
+                .data(data)
+                .enter()
+                .insert("circle")
+                .attr("cx", function (d) {
+                    return projection([+d.Longitude, +d.Latitude])[0];//x(d.Latitude);
+                })
+                .attr("cy", function (d) {
+                    return projection([+d.Longitude, +d.Latitude])[1];//y(+d.Longitude);
+                })
+                .attr("opacity", function (d) {
+                    return 0;
+                })
+                .attr("r", function (d) {
+                    return 10;
+                })
+                .attr('class', function (d, i) {
+                    return moment(d['Transaction_date'].split(' ')[0]).format('YYYY-MM-DD');
+                })
+                .style("fill", function (d) {
+                    return color(d['Payment_Type']);
+                });
+        generateLegend(divid, Payment_Types, color.range(), width - 200, 100);
+    }
+
+    function map(data, bubble_size) {
+        var Payment_Types = $.unique(data.map(function (d, i) {
+            return d['Payment_Type'];
+        }));
+        Payment_Types = $.unique(Payment_Types);
+        var color = d3.scale.ordinal()
+                .domain(Payment_Types)
+                .range(["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]);
+        var fills = {};
+        var colors = color.range();
+        Payment_Types.forEach(function (d, i) {
+            fills[d] = colors[i];
+        });
+        fills['defaultFill'] = '#ABDDA4';
+
+
+        var bubble_map = new Datamap({
+            element: document.getElementById("bubbles"),
+            geographyConfig: {
+                popupOnHover: false,
+                highlightOnHover: false
+            },
+            fills: fills
+        });
+
+        var bubbles = [];
+
+        data.forEach(function (d, i) {
+            bubbles.push({
+                name: d['Name'],
+                radius: bubble_size || 7,
+                country: d['Country'],
+                fillKey: d['Payment_Type'],
+                date: moment(d['Transaction_date'].split(' ')[0]).format('YYYY-MM-DD'),
+                latitude: +d.Latitude,
+                longitude: +d.Longitude
+            });
+        });
+        bubble_map.bubbles(bubbles, {
+            popupTemplate: function (geo, data) {
+                return '<div class="hoverinfo"> Transaction Type:' + data.fillKey + ', Date: ' + data.date + '</div>';
+            }
+        });
+        generateLegend('#bubbles', Payment_Types, color.range(), $('#bubbles').width() -200, 150);
+    }
+
+    function getMapBubbles(all_bubble_selector, filter_selector) {
+        return $(all_bubble_selector).filter(function (i, d) {
+            if (JSON.parse($(d).attr('data-info')).date == filter_selector) {
+                return true;
+            }
+            return false;
+        });
+    }
+
+    function generateLegend(svgSelector, domain, colors, x, y) {
+        var ordinal = d3.scale.ordinal()
+                .domain(domain)
+                .range(colors);
+
+        var svg = d3.select(svgSelector + " svg");
+
+        svg.append("g")
+                .attr("class", "legendLinear")
+                .attr("transform", "translate(" + (x || 30) + "," + (y || 20) + ")");
+
+        var legendLinear = d3.legend.color()
+                .shapeWidth(30)
+                .orient('vertical')
+                .labelFormat(function (d, i) {
+                    return '<b>' + d + '</b>'
+                })
+                .scale(ordinal);
+
+        svg.select(".legendLinear")
+                .call(legendLinear);
+    }
+</script>
+</body>
+</html>
